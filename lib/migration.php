@@ -86,6 +86,9 @@ function migration_source_probe(array $config): array
 
 function migration_preflight(array $config): array
 {
+    if (!$config['migration']['confirmOverwrite']) {
+        throw new RuntimeException('Explicit destination overwrite confirmation is required.');
+    }
     migration_assert_distinct($config);
     migration_rewrite_files($config);
     $probe = migration_source_probe($config);
@@ -119,7 +122,7 @@ function migration_preflight(array $config): array
             $destinationDb->exec('DROP TABLE ' . $probeTable);
         }
     }
-    $destination = new Transfer($config['destination']['transfer']);
+    $destination = new Transfer($config['destination']['transfer'], true);
     $destination->assertDirectory(migration_home_root($config));
     $test = rtrim($config['destination']['transfer']['path'], '/') . '/.migrator-probe-' . bin2hex(random_bytes(12));
     try {

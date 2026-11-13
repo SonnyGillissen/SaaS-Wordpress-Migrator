@@ -51,6 +51,12 @@ on HTTPS (localhost is allowed for development).
   The destination needs space for the migrated files and tables.
 - Dedicated writable destination directories and a destination database with
   permissions to create, drop, insert, and update tables.
+  Missing destination directories (including parent directories) are created
+  during validation after overwrite confirmation and source/separation checks.
+  The transfer account must be able to list and create directories under the
+  nearest existing parent. Existing files or symlinks are never treated as
+  directories. Source directories must already exist and are never created.
+  Newly created empty directories may remain if validation or migration fails.
 
 Source and destination databases must be distinct. On a shared file-server host,
 the default is the same account, port, and service namespace, with disjoint

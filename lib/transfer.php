@@ -8,7 +8,7 @@ final class Transfer
     private array $config;
     public const CHUNK = 262144;
 
-    public function __construct(array $config)
+    public function __construct(array $config, bool $createRoot = false)
     {
         $this->config = $config;
         if ($config['protocol'] === 'sftp') {
@@ -50,7 +50,11 @@ final class Transfer
                 throw new RuntimeException('FTP passive mode unavailable.');
             }
         }
-        $this->assertDirectory($config['path']);
+        if ($createRoot) {
+            $this->ensureDirectory($config['path']);
+        } else {
+            $this->assertDirectory($config['path']);
+        }
     }
 
     public function __destruct()
@@ -157,7 +161,10 @@ final class Transfer
         if ($path === '/') {
             return;
         }
-        $this->assertDirectory(dirname($path));
+        if (substr_count($path, '/') > 64) {
+            throw new RuntimeException('Destination directory is too deeply nested.');
+        }
+        $this->ensureDirectory(dirname($path));
         foreach ($this->listing(dirname($path)) as $entry) {
             if ($entry['name'] === basename($path)) {
                 if ($entry['type'] !== 'dir') {
@@ -170,6 +177,7 @@ final class Transfer
         if (!$ok) {
             throw new RuntimeException('Cannot create destination directory.');
         }
+        $this->assertDirectory($path);
     }
 
     private function fileEntry(string $path, bool $mustExist): ?array
