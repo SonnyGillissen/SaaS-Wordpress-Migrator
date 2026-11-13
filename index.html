@@ -1,0 +1,164 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'self'; script-src 'self'; style-src 'self'; img-src 'self'; base-uri 'none'; form-action 'self'; object-src 'none'; frame-src 'none'">
+  <title>SaaS WordPress Migrator</title>
+  <link rel="stylesheet" href="assets/style.css">
+  <script src="assets/config-package.js" defer></script>
+  <script src="assets/app.js" defer></script>
+</head>
+<body>
+  <main>
+    <header>
+      <p class="eyebrow">HOST TO HOST · NO INSTALLATION</p>
+      <h1>SaaS WordPress Migrator</h1>
+      <p>Move your WordPress site. Keep the source untouched.</p>
+    </header>
+    <div id="startup" role="status">Checking server capabilities…</div>
+    <aside id="resume-notice" hidden>
+      <p>A saved migration is available. Re-enter passwords and your access key to continue.</p>
+      <button id="restore" type="button">Restore migration</button>
+      <button id="discard" class="secondary" type="button">Discard saved state</button>
+    </aside>
+    <nav aria-label="Migration steps">
+      <ol id="steps">
+        <li aria-current="step"><button type="button" data-go-step="0">1. Source</button></li>
+        <li><button type="button" data-go-step="1" disabled>2. Content</button></li>
+        <li><button type="button" data-go-step="2" disabled>3. Destination</button></li>
+        <li>4. Migration</li>
+        <li>5. Finished</li>
+      </ol>
+    </nav>
+    <p id="error" role="alert" hidden></p>
+    <form id="wizard">
+      <section data-step="0" aria-labelledby="source-heading">
+        <h2 id="source-heading" tabindex="-1">Connect to the source</h2>
+        <p>Use read-only source credentials where possible. All connections are made by this PHP server.</p>
+        <label>Migration mode
+          <select id="migration-mode" name="migration.mode">
+            <option value="full">Site migration (files and database)</option>
+            <option value="content">Content only (WordPress connections)</option>
+          </select>
+        </label>
+        <label>Migrator access key <input id="access-key" type="password" autocomplete="off" required></label>
+        <p class="hint">Set this private key on the server first; see the README. Never use your WordPress password here.</p>
+        <div id="source-fields"></div>
+        <fieldset id="source-wordpress">
+          <legend>WordPress login</legend>
+          <label><span id="source-url-label">Current WordPress address</span> <input name="source.wordpress.url" type="url" placeholder="https://example.com/wordpress" required></label>
+          <label>Administrator username <input name="source.wordpress.username" autocomplete="off" required></label>
+          <label>Application password <input name="source.wordpress.password" type="password" autocomplete="off" required></label>
+          <p class="hint">Create an application password in WordPress → Users → Profile. HTTPS is required.</p>
+          <p class="hint content-only" hidden>For content-only migration, enter the public home URL, even when WordPress is installed in a subdirectory.</p>
+        </fieldset>
+        <button type="submit">Connect and continue</button>
+      </section>
+      <section data-step="1" aria-labelledby="content-heading" hidden>
+        <h2 id="content-heading" tabindex="-1">Choose what to move</h2>
+        <p class="full-only">WordPress files, themes, plugins, settings, and users are migrated. Content can be excluded.</p>
+        <p class="content-only" hidden>Copy REST-enabled posts, pages, or custom post types into an existing WordPress site. Files, accounts, site settings, and unsupported content are not migrated.</p>
+        <label class="choice full-only"><input id="include-content" name="migration.includeContent" type="checkbox" checked> Include site content and uploads</label>
+        <fieldset class="content-only" hidden>
+          <legend>Content updates</legend>
+          <label class="choice"><input id="newer-only" name="migration.newerOnly" type="checkbox"> Only content modified after a date</label>
+          <div id="newer-options" hidden>
+            <label>Modified after (UTC) <input name="migration.since" type="datetime-local" step="1"></label>
+            <p class="hint">Only source items modified strictly after this UTC timestamp are considered. An existing destination item is updated only when the source is newer. Match items by post type and slug, not database ID.</p>
+          </div>
+        </fieldset>
+        <div id="content-options">
+          <div class="row">
+            <h3>Content types</h3>
+            <button type="button" class="secondary" id="select-all">Select all</button>
+            <button type="button" class="secondary" id="select-none">Select none</button>
+          </div>
+          <div id="content-types"></div>
+          <p class="hint full-only">Attachments are a separate content type. Plugins may store additional content in custom tables; see the migration limitations.</p>
+          <p class="hint content-only" hidden>Media files, featured images, comments, plugin fields, and parent relationships are not copied. Embedded media stays on the source, which must remain available. Authors map to the destination administrator. Review the README before migrating.</p>
+        </div>
+        <fieldset class="full-only">
+          <legend>Destination administrator</legend>
+          <label class="choice"><input type="radio" name="admin-mode" value="keep" checked> Keep existing accounts</label>
+          <label class="choice"><input type="radio" name="admin-mode" value="replace"> Change the source administrator’s login on the destination</label>
+          <div id="admin-options" hidden>
+            <label>New username <input name="migration.admin.username" autocomplete="off"></label>
+            <label>New email <input name="migration.admin.email" type="email" autocomplete="off"></label>
+            <label>New password (12–72 bytes) <input name="migration.admin.password" type="password" minlength="12" maxlength="72" autocomplete="new-password"></label>
+            <p class="hint">Only the destination account is changed. Other users remain unchanged.</p>
+          </div>
+        </fieldset>
+        <div class="actions">
+          <button type="button" class="secondary" data-back>Back</button>
+          <button type="submit">Continue to destination</button>
+        </div>
+      </section>
+      <section data-step="2" aria-labelledby="destination-heading" hidden>
+        <h2 id="destination-heading" tabindex="-1">Set the destination</h2>
+        <div id="destination-fields"></div>
+        <fieldset id="destination-wordpress">
+          <legend>WordPress login</legend>
+          <label>Public WordPress home URL <input name="destination.wordpress.url" type="url" placeholder="https://destination.example" required></label>
+          <label>Administrator username <input name="destination.wordpress.username" autocomplete="off" required></label>
+          <label>Application password <input name="destination.wordpress.password" type="password" autocomplete="off" required></label>
+          <p class="hint">Content-only migration uses HTTPS REST access to the existing destination site. No (S)FTP or MySQL credentials are needed.</p>
+        </fieldset>
+        <fieldset id="destination-addresses">
+          <legend>Site addresses</legend>
+          <label>Public home URL <input name="migration.homeUrl" type="url" placeholder="https://new-example.com" required></label>
+          <label class="choice"><input id="different-url" type="checkbox"> WordPress is installed in a different directory</label>
+          <div id="site-url-options" hidden>
+            <label>WordPress site URL <input name="migration.siteUrl" type="url" placeholder="https://new-example.com/wordpress"></label>
+            <p class="hint">The home URL must be a parent directory on the same origin. The transfer path is the WordPress directory; its parent must also be writable for supporting files.</p>
+          </div>
+        </fieldset>
+        <aside class="warning">
+          <strong>Back up the destination first.</strong>
+          <p class="full-only">Matching files and database tables will be overwritten. Use a dedicated destination database and an empty directory. Keep source writes paused throughout migration.</p>
+          <p class="content-only" hidden>Matching content may be updated. Existing unrelated content is retained. Keep both sites unchanged while running or resuming; plugins may trigger notifications or other side effects on import.</p>
+          <label class="choice"><input name="migration.confirmOverwrite" type="checkbox" required> I have a backup and permission to overwrite the destination.</label>
+        </aside>
+        <details class="full-only configuration-package">
+          <summary>Advanced: shared-host root acknowledgment</summary>
+          <p class="hint">Different accounts or services can show different paths for the same physical files. Enable only after verifying with your host that the source root and destination home root are physically separate and neither contains the other. Incorrect acknowledgment can overwrite your source. Keep independent backups.</p>
+          <label class="choice"><input name="migration.acknowledgeSeparateRoots" type="checkbox"> I have verified the physical roots are separate; allow different accounts, ports, or FTP/SFTP namespaces on the same host.</label>
+          <p class="hint">This overrides only an ambiguous namespace check. Confirmed overlap within the same account/service and same-database checks remain enforced.</p>
+        </details>
+        <div class="actions">
+          <button type="button" class="secondary" data-back>Back</button>
+          <button type="submit">Validate and start migration</button>
+        </div>
+      </section>
+      <section data-step="3" aria-labelledby="progress-heading" hidden>
+        <h2 id="progress-heading" tabindex="-1">Migrating your site</h2>
+        <p id="phase" role="status" aria-live="polite">Preparing migration…</p>
+        <progress id="progress" aria-label="Current migration phase"></progress>
+        <p id="progress-detail" class="hint"></p>
+        <div class="actions">
+          <button id="pause" type="button" class="secondary">Pause safely</button>
+          <button id="retry" type="button" hidden>Resume migration</button>
+          <button id="edit-connections" type="button" class="secondary" hidden>Re-enter connection details</button>
+        </div>
+        <h3>Activity</h3>
+        <ol id="activity" class="activity" aria-label="Migration activity"></ol>
+        <p class="hint">Each completed batch is checkpointed in this browser. Keep this tab open. If a request fails, retry it; do not make manual changes to the destination while resuming.</p>
+      </section>
+      <section data-step="4" aria-labelledby="finished-heading" hidden>
+        <h2 id="finished-heading" tabindex="-1">Migration finished</h2>
+        <p>Your source has not been changed.</p>
+        <p><a id="visit-site" rel="noopener noreferrer" target="_blank">Open the destination site</a></p>
+        <ul>
+          <li>Test the homepage, admin login, media, links, forms, and plugin integrations.</li>
+          <li>Check DNS, HTTPS, permalink rules, caches, cron, and email delivery.</li>
+          <li>Revoke temporary application passwords and remove the migrator from the server.</li>
+        </ul>
+        <button type="button" id="finish">Clear saved migration</button>
+      </section>
+    </form>
+    <footer>Credentials stay in memory and are sent only to this server over HTTPS. Saved browser state excludes passwords. No migrator database or third-party services.</footer>
+    <noscript>This wizard requires JavaScript. Enable it to connect and migrate.</noscript>
+  </main>
+</body>
+</html>
