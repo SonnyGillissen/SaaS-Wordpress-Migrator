@@ -7,6 +7,7 @@
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'self'; script-src 'self'; style-src 'self'; img-src 'self'; base-uri 'none'; form-action 'self'; object-src 'none'; frame-src 'none'">
   <title>SaaS WordPress Migrator</title>
   <link rel="stylesheet" href="assets/style.css">
+  <script src="assets/config-package.js" defer></script>
   <script src="assets/app.js" defer></script>
 </head>
 <body>
@@ -24,9 +25,9 @@
     </aside>
     <nav aria-label="Migration steps">
       <ol id="steps">
-        <li aria-current="step">1. Source</li>
-        <li>2. Content</li>
-        <li>3. Destination</li>
+        <li aria-current="step"><button type="button" data-go-step="0">1. Source</button></li>
+        <li><button type="button" data-go-step="1" disabled>2. Content</button></li>
+        <li><button type="button" data-go-step="2" disabled>3. Destination</button></li>
         <li>4. Migration</li>
         <li>5. Finished</li>
       </ol>
@@ -39,7 +40,7 @@
         <label>Migrator access key <input id="access-key" type="password" autocomplete="off" required></label>
         <p class="hint">Set this private key on the server first; see the README. Never use your WordPress password here.</p>
         <div id="source-fields"></div>
-        <fieldset>
+        <fieldset id="source-wordpress">
           <legend>WordPress login</legend>
           <label>Current WordPress address <input name="source.wordpress.url" type="url" placeholder="https://example.com/wordpress" required></label>
           <label>Administrator username <input name="source.wordpress.username" autocomplete="off" required></label>
@@ -80,7 +81,7 @@
       <section data-step="2" aria-labelledby="destination-heading" hidden>
         <h2 id="destination-heading" tabindex="-1">Set the destination</h2>
         <div id="destination-fields"></div>
-        <fieldset>
+        <fieldset id="destination-addresses">
           <legend>Site addresses</legend>
           <label>Public home URL <input name="migration.homeUrl" type="url" placeholder="https://new-example.com" required></label>
           <label class="choice"><input id="different-url" type="checkbox"> WordPress is installed in a different directory</label>

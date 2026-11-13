@@ -14,6 +14,8 @@
   let inspected = null;
   let saved = null;
   let resumeConfig = null;
+  let furthestStep = 0;
+  const connectionTabs = {};
 
   function element(tag, attributes = {}, text = '') {
     const node = document.createElement(tag);
@@ -71,10 +73,65 @@
     field(database, 'WordPress table prefix', `${side}.database.prefix`, 'text', 'wp_');
     database.append(element('p', { class: 'hint' }, 'Use a network-protected database connection. Remote database access must be allowed by the host.'));
     root.append(database);
+    const wordpress = document.querySelector(side === 'source' ? '#source-wordpress' : '#destination-addresses');
+    const panels = [transfer, database, wordpress];
+    const tabs = element('div', { role: 'tablist', 'aria-label': `${side} connection details`, class: 'connection-tabs' });
+    const buttons = [];
+    function selectTab(index, focus = false) {
+      panels.forEach((panel, position) => {
+        panel.hidden = position !== index;
+        buttons[position].setAttribute('aria-selected', String(position === index));
+        buttons[position].tabIndex = position === index ? 0 : -1;
+      });
+      if (focus) buttons[index].focus();
+    }
+    panels.forEach((panel, index) => {
+      const title = ['(S)FTP', 'Database', side === 'source' ? 'WordPress' : 'WordPress URLs'][index];
+      const tab = element('button', {
+        type: 'button', role: 'tab', id: `${side}-tab-${index}`,
+        'aria-controls': `${side}-panel-${index}`
+      }, title);
+      panel.id = `${side}-panel-${index}`;
+      panel.setAttribute('role', 'tabpanel');
+      panel.setAttribute('aria-labelledby', tab.id);
+      buttons.push(tab);
+      tabs.append(tab);
+      tab.addEventListener('click', () => { if (!busy && !running) selectTab(index); });
+      tab.addEventListener('keydown', event => {
+        const keys = ['ArrowLeft', 'ArrowRight', 'Home', 'End'];
+        if (!keys.includes(event.key) || busy || running) return;
+        event.preventDefault();
+        const next = event.key === 'Home' ? 0 : event.key === 'End' ? panels.length - 1
+          : (index + (event.key === 'ArrowRight' ? 1 : -1) + panels.length) % panels.length;
+        selectTab(next, true);
+      });
+      if (index < panels.length - 1) {
+        const next = element('button', { type: 'button', class: 'secondary' }, `Next: ${index === 0 ? 'Database' : 'WordPress'}`);
+        next.addEventListener('click', () => {
+          if (busy || running) return;
+          const invalid = [...panel.querySelectorAll('input, select')].find(input => !input.checkValidity());
+          if (invalid) invalid.reportValidity();
+          else selectTab(index + 1, true);
+        });
+        panel.append(next);
+      }
+      root.append(panel);
+    });
+    root.prepend(tabs);
+    connectionTabs[side] = { panels, selectTab };
+    selectTab(0);
+    configurationControls(side, root);
+  }
+
+  function updateNavigation() {
+    document.querySelectorAll('[data-go-step]').forEach(button => {
+      button.disabled = busy || running || Number(button.dataset.goStep) > furthestStep;
+    });
   }
 
   function setStep(next) {
     step = next;
+    furthestStep = Math.max(furthestStep, Math.min(step, 2));
     sections.forEach((section, index) => {
       section.hidden = index !== step;
       section.querySelectorAll('input, select').forEach(input => { input.disabled = index !== step; });
@@ -84,7 +141,103 @@
       else item.removeAttribute('aria-current');
     });
     updateOptional();
+    updateNavigation();
     sections[step].querySelector('h2').focus();
+  }
+
+  // Hidden tab fields still participate in validation; reveal the first invalid panel.
+  form.addEventListener('invalid', event => {
+    const first = [...sections[step].querySelectorAll('input, select')].find(input => !input.validity.valid && !input.disabled);
+    if (event.target !== first) return;
+    for (const { panels, selectTab } of Object.values(connectionTabs)) {
+      const index = panels.findIndex(panel => panel.contains(event.target));
+      if (index !== -1 && panels[index].hidden) selectTab(index);
+    }
+  }, true);
+
+  function configurationControls(side, root) {
+    const details = element('details', { class: 'configuration-package' });
+    details.append(element('summary', {}, 'Import / export encrypted configuration'));
+    details.append(element('p', { class: 'hint' }, 'Includes connection passwords. Use a unique passphrase of at least 12 characters and share it separately. The migrator access key, job state, and overwrite consent are never included.'));
+    const passphrase = field(details, 'Package passphrase', '', 'password', '', false);
+    passphrase.removeAttribute('name');
+    passphrase.autocomplete = 'off';
+    const file = field(details, 'Encrypted configuration file', '', 'file', '', false);
+    file.removeAttribute('name');
+    file.accept = '.json,application/json';
+    const actions = element('div', { class: 'actions' });
+    const exportButton = element('button', { type: 'button', class: 'secondary' }, `Export ${side}`);
+    const importButton = element('button', { type: 'button', class: 'secondary' }, `Import ${side}`);
+    const status = element('p', { role: 'status', class: 'hint' });
+    actions.append(exportButton, importButton);
+    details.append(actions, status);
+    root.append(details);
+    async function packageAction(importing) {
+      if (busy || running) return;
+      if (importing && checkpoint) {
+        showError('Import is disabled for an existing migration checkpoint. Clear the saved migration and reload to configure a new migration.');
+        return;
+      }
+      busy = true;
+      updateNavigation();
+      exportButton.disabled = importButton.disabled = true;
+      showError('');
+      status.textContent = importing ? 'Decrypting configuration…' : 'Encrypting configuration…';
+      try {
+        if (!window.ConfigPackage) throw new Error('Configuration encryption is unavailable. Upload all application files and use HTTPS.');
+        if (importing) {
+          const selected = file.files[0];
+          if (!selected || selected.size > 131072) throw new Error('Choose an encrypted configuration file no larger than 128 KiB.');
+          const settings = await window.ConfigPackage.decrypt(await selected.text(), side, passphrase.value);
+          for (const input of form.querySelectorAll(`[name^="${side}."]`)) {
+            const [, group, key] = input.name.split('.');
+            input.value = settings[group][key];
+          }
+          if (side === 'source') {
+            inspected = null;
+            contentTypes([]);
+            furthestStep = 0;
+          } else {
+            form.elements.namedItem('migration.homeUrl').value = settings.addresses.homeUrl;
+            form.elements.namedItem('migration.siteUrl').value = settings.addresses.siteUrl;
+            document.querySelector('#different-url').checked = settings.addresses.homeUrl !== settings.addresses.siteUrl;
+            form.elements.namedItem('migration.confirmOverwrite').checked = false;
+          }
+          const fingerprint = form.elements.namedItem(`${side}.transfer.fingerprint`);
+          const sftp = settings.transfer.protocol === 'sftp';
+          fingerprint.parentElement.hidden = !sftp;
+          fingerprint.required = sftp;
+          updateOptional();
+          connectionTabs[side].selectTab(0);
+          status.textContent = 'Configuration imported. Review all tabs and reconnect before migrating.';
+        } else {
+          const settings = config();
+          const selected = settings[side];
+          if (side === 'destination') selected.addresses = {
+            homeUrl: settings.migration.homeUrl, siteUrl: settings.migration.siteUrl
+          };
+          const encrypted = await window.ConfigPackage.encrypt(side, selected, passphrase.value);
+          const url = URL.createObjectURL(new Blob([encrypted], { type: 'application/json' }));
+          const link = element('a', { href: url, download: `saas-wordpress-${side}.json` });
+          document.body.append(link);
+          link.click();
+          link.remove();
+          setTimeout(() => URL.revokeObjectURL(url), 1000);
+          status.textContent = 'Encrypted package downloaded. Keep the passphrase separate; it cannot be recovered.';
+        }
+      } catch (error) {
+        status.textContent = '';
+        showError(error.message);
+      } finally {
+        passphrase.value = '';
+        file.value = '';
+        busy = false;
+        exportButton.disabled = importButton.disabled = false;
+        updateNavigation();
+      }
+    }
+    exportButton.addEventListener('click', () => packageAction(false));
+    importButton.addEventListener('click', () => packageAction(true));
   }
 
   function updateOptional() {
@@ -202,6 +355,7 @@
 
   function stopped(message) {
     running = false;
+    updateNavigation();
     document.querySelector('#pause').hidden = true;
     document.querySelector('#retry').hidden = false;
     document.querySelector('#edit-connections').hidden = false;
@@ -211,6 +365,7 @@
   async function migrate() {
     if (running) return;
     running = true;
+    updateNavigation();
     pauseRequested = false;
     showError('');
     document.querySelector('#pause').hidden = false;
@@ -245,6 +400,7 @@
     event.preventDefault();
     if (busy || running) return;
     busy = true;
+    updateNavigation();
     showError('');
     const button = sections[step].querySelector('[type="submit"]');
     if (button) button.disabled = true;
@@ -293,11 +449,16 @@
       showError(error.message);
     } finally {
       busy = false;
+      updateNavigation();
       if (button) button.disabled = false;
     }
   });
 
   form.addEventListener('change', updateOptional);
+  document.querySelectorAll('[data-go-step]').forEach(button => button.addEventListener('click', () => {
+    const next = Number(button.dataset.goStep);
+    if (!busy && !running && next <= furthestStep) setStep(next);
+  }));
   form.querySelectorAll('[data-back]').forEach(button => button.addEventListener('click', () => {
     if (!busy && !running) setStep(step - 1);
   }));
