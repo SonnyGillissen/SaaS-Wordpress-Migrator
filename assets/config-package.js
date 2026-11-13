@@ -59,15 +59,19 @@
     function sanitize(configuration, side) {
         var schema = {
             transfer: COMMON.transfer,
-            database: COMMON.database
+            database: COMMON.database,
+            wordpress: ['url', 'username', 'password']
         };
-        if (side === 'source') {
-            schema.wordpress = ['url', 'username', 'password'];
-        } else {
+        if (side === 'destination') {
             schema.addresses = ['homeUrl', 'siteUrl'];
         }
         var clean = {};
-        objectKeys(configuration, Object.keys(schema), false).forEach(function (section) {
+        var sections = objectKeys(configuration, Object.keys(schema), false);
+        if (sections.indexOf('wordpress') === -1 &&
+                (sections.indexOf('transfer') === -1 || sections.indexOf('database') === -1)) {
+            throw new Error('Configuration requires WordPress settings or both transfer and database settings.');
+        }
+        sections.forEach(function (section) {
             var fields = configuration[section];
             var result = {};
             objectKeys(fields, schema[section], false).forEach(function (field) {

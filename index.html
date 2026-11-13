@@ -37,22 +37,38 @@
       <section data-step="0" aria-labelledby="source-heading">
         <h2 id="source-heading" tabindex="-1">Connect to the source</h2>
         <p>Use read-only source credentials where possible. All connections are made by this PHP server.</p>
+        <label>Migration mode
+          <select id="migration-mode" name="migration.mode">
+            <option value="full">Site migration (files and database)</option>
+            <option value="content">Content only (WordPress connections)</option>
+          </select>
+        </label>
         <label>Migrator access key <input id="access-key" type="password" autocomplete="off" required></label>
         <p class="hint">Set this private key on the server first; see the README. Never use your WordPress password here.</p>
         <div id="source-fields"></div>
         <fieldset id="source-wordpress">
           <legend>WordPress login</legend>
-          <label>Current WordPress address <input name="source.wordpress.url" type="url" placeholder="https://example.com/wordpress" required></label>
+          <label><span id="source-url-label">Current WordPress address</span> <input name="source.wordpress.url" type="url" placeholder="https://example.com/wordpress" required></label>
           <label>Administrator username <input name="source.wordpress.username" autocomplete="off" required></label>
           <label>Application password <input name="source.wordpress.password" type="password" autocomplete="off" required></label>
           <p class="hint">Create an application password in WordPress → Users → Profile. HTTPS is required.</p>
+          <p class="hint content-only" hidden>For content-only migration, enter the public home URL, even when WordPress is installed in a subdirectory.</p>
         </fieldset>
         <button type="submit">Connect and continue</button>
       </section>
       <section data-step="1" aria-labelledby="content-heading" hidden>
         <h2 id="content-heading" tabindex="-1">Choose what to move</h2>
-        <p>WordPress files, themes, plugins, settings, and users are migrated. Content can be excluded.</p>
-        <label class="choice"><input id="include-content" name="migration.includeContent" type="checkbox" checked> Include site content and uploads</label>
+        <p class="full-only">WordPress files, themes, plugins, settings, and users are migrated. Content can be excluded.</p>
+        <p class="content-only" hidden>Copy REST-enabled posts, pages, or custom post types into an existing WordPress site. Files, accounts, site settings, and unsupported content are not migrated.</p>
+        <label class="choice full-only"><input id="include-content" name="migration.includeContent" type="checkbox" checked> Include site content and uploads</label>
+        <fieldset class="content-only" hidden>
+          <legend>Content updates</legend>
+          <label class="choice"><input id="newer-only" name="migration.newerOnly" type="checkbox"> Only content modified after a date</label>
+          <div id="newer-options" hidden>
+            <label>Modified after (UTC) <input name="migration.since" type="datetime-local" step="1"></label>
+            <p class="hint">Only source items modified strictly after this UTC timestamp are considered. An existing destination item is updated only when the source is newer. Match items by post type and slug, not database ID.</p>
+          </div>
+        </fieldset>
         <div id="content-options">
           <div class="row">
             <h3>Content types</h3>
@@ -60,9 +76,10 @@
             <button type="button" class="secondary" id="select-none">Select none</button>
           </div>
           <div id="content-types"></div>
-          <p class="hint">Attachments are a separate content type. Plugins may store additional content in custom tables; see the migration limitations.</p>
+          <p class="hint full-only">Attachments are a separate content type. Plugins may store additional content in custom tables; see the migration limitations.</p>
+          <p class="hint content-only" hidden>Media files, featured images, comments, plugin fields, and parent relationships are not copied. Embedded media stays on the source, which must remain available. Authors map to the destination administrator. Review the README before migrating.</p>
         </div>
-        <fieldset>
+        <fieldset class="full-only">
           <legend>Destination administrator</legend>
           <label class="choice"><input type="radio" name="admin-mode" value="keep" checked> Keep existing accounts</label>
           <label class="choice"><input type="radio" name="admin-mode" value="replace"> Change the source administrator’s login on the destination</label>
@@ -81,6 +98,13 @@
       <section data-step="2" aria-labelledby="destination-heading" hidden>
         <h2 id="destination-heading" tabindex="-1">Set the destination</h2>
         <div id="destination-fields"></div>
+        <fieldset id="destination-wordpress">
+          <legend>WordPress login</legend>
+          <label>Public WordPress home URL <input name="destination.wordpress.url" type="url" placeholder="https://destination.example" required></label>
+          <label>Administrator username <input name="destination.wordpress.username" autocomplete="off" required></label>
+          <label>Application password <input name="destination.wordpress.password" type="password" autocomplete="off" required></label>
+          <p class="hint">Content-only migration uses HTTPS REST access to the existing destination site. No (S)FTP or MySQL credentials are needed.</p>
+        </fieldset>
         <fieldset id="destination-addresses">
           <legend>Site addresses</legend>
           <label>Public home URL <input name="migration.homeUrl" type="url" placeholder="https://new-example.com" required></label>
@@ -92,7 +116,8 @@
         </fieldset>
         <aside class="warning">
           <strong>Back up the destination first.</strong>
-          <p>Matching files and database tables will be overwritten. Use a dedicated destination database and an empty directory. Keep source writes paused throughout migration.</p>
+          <p class="full-only">Matching files and database tables will be overwritten. Use a dedicated destination database and an empty directory. Keep source writes paused throughout migration.</p>
+          <p class="content-only" hidden>Matching content may be updated. Existing unrelated content is retained. Keep both sites unchanged while running or resuming; plugins may trigger notifications or other side effects on import.</p>
           <label class="choice"><input name="migration.confirmOverwrite" type="checkbox" required> I have a backup and permission to overwrite the destination.</label>
         </aside>
         <div class="actions">

@@ -27,6 +27,11 @@ downloads or plain text.
 
 ### Hosting requirements
 
+Content-only mode needs PHP sessions, JSON, OpenSSL, and cURL, plus outbound HTTPS
+access to both WordPress sites. It does **not** require PDO MySQL, FTP, or SSH2.
+Encrypted configuration packages additionally need a browser with Web Crypto
+on HTTPS (localhost is allowed for development).
+
 “Upload and run” does not mean every host has the necessary capabilities:
 
 - PHP 8.1+ with sessions, JSON, OpenSSL, PDO MySQL, cURL, and a working HTTPS
@@ -79,6 +84,87 @@ private network or an administrator-managed secure tunnel.
 4. **Migration:** follow the batch-by-batch activity log. Pause safely between
    requests or retry after fixing a connection failure.
 5. **Finished:** test the site before changing DNS or reopening source writes.
+
+Connection details are grouped into keyboard-accessible **(S)FTP → Database →
+WordPress** tabs (the destination's final tab contains its WordPress URLs).
+Use the tab buttons or Next buttons to switch. Missing required fields reveal the
+appropriate tab. Previously reached Source, Content, and Destination steps can be
+revisited from the step bar. While a request or migration is running, navigation
+is locked; pause safely first. Going back is not a rollback, and resuming a
+checkpoint still requires its original locations and choices.
+
+### Encrypted configuration packages
+
+Expand **Import / export encrypted configuration** on Source or Destination.
+Enter a unique passphrase of at least 12 characters, then export a package or
+choose a previously exported JSON file and import it. Source and destination
+packages are separate and cannot be imported into the wrong side. Partial
+connection forms can be exported; review all required fields after importing.
+Choose the migration mode before importing. Packages without the connections
+needed for that mode are rejected, and omitted fields are cleared rather than
+silently retaining credentials from a previously entered configuration.
+
+Packages include connection passwords. Destination site/home URL settings are
+included for full-site mode; content-only packages contain only WordPress
+connection details. The migrator access key, job checkpoint, replacement account,
+and overwrite consent are **never** exported. Imports never start a migration
+or authorize overwrites. Import is blocked once a migration has a checkpoint.
+
+Encryption and decryption happen entirely in the browser with AES-256-GCM and a
+PBKDF2-SHA-256 key derived using 600,000 iterations, a fresh 16-byte salt, and a
+fresh 12-byte nonce per export. Hostnames, usernames, URLs, and passwords are
+inside the encrypted payload; only version/cryptographic metadata is readable.
+Packages larger than 128 KiB, altered data, and unsupported formats are rejected.
+There is no plaintext fallback or passphrase recovery.
+
+Share the passphrase separately from the package. Protect downloaded files from
+offline password guessing with a long, unique passphrase; encryption does not
+protect an unlocked page or compromised computer. Passphrase fields are cleared
+after each operation, and imported passwords remain in page memory only. Browser
+resume state continues to exclude passwords.
+
+### Content-only migration
+
+Choose **Content only (WordPress connections)** on Source. Only the WordPress tab
+is shown on each connection step: enter the site's **public home URL**, an
+administrator username, and a WordPress application password. Both existing sites
+must expose authenticated WordPress REST endpoints over HTTPS; the destination
+must already have the required post types registered. No file server or database
+details are requested or used, and this mode never changes site/home settings or
+administrator accounts.
+
+Select the supported post types. Optionally select **Only content modified after
+a date** and supply a timestamp explicitly interpreted as **UTC**. Source items
+must be modified strictly after that timestamp; matching destination items are
+updated only if the source modification time is newer. Without this option,
+selected source content is imported regardless of modification time.
+
+Items are matched by post type and slug, not numeric IDs. Back up the destination
+and check slug conflicts before running; unrelated destination content is not
+deleted. Source content must remain unchanged during pagination/resume. Importing
+through WordPress invokes normal plugin hooks, notifications, and other save
+side effects. A retry can repeat those hooks even when it does not duplicate a
+post.
+
+This REST transfer is not a full database clone: themes, plugins, users, settings,
+and data not exposed through supported REST fields are not migrated. Review
+media links, custom blocks, plugin metadata, menus, comments, and relationships
+before retiring the source. The validation/activity log describes supported
+content and any transfer limitations.
+
+Media binaries and featured images are not imported. Embedded media URLs remain
+source-hosted, so **keep the source available** or migrate those assets separately.
+Normal content links are rewritten to the destination; media/style attributes and
+block metadata are preserved conservatively. Authors map to the authenticated
+destination administrator. Categories/tags are mapped by slug, but parent-post
+links, category hierarchy, term descriptions, custom taxonomies, and plugin fields
+are not reconstructed. Password-protected posts are rejected rather than risk
+publishing them without protection.
+
+Each REST tick processes at most one post and eight related terms, with a 2 MiB
+response limit, 40-request bound, and 35-second processing budget. Large or
+unsupported content fails with an explicit error and retains its checkpoint.
+WordPress can sanitize HTML according to destination permissions and plugins.
 
 ### Different WordPress and home URLs
 

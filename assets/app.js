@@ -16,6 +16,7 @@
   let resumeConfig = null;
   let furthestStep = 0;
   const connectionTabs = {};
+  const contentMode = () => document.querySelector('#migration-mode').value === 'content';
 
   function element(tag, attributes = {}, text = '') {
     const node = document.createElement(tag);
@@ -40,6 +41,7 @@
     transfer.append(element('legend', {}, 'File transfer'));
     const protocolLabel = element('label', {}, 'Protocol');
     const protocol = element('select', { name: `${side}.transfer.protocol` });
+    protocol.required = true;
     for (const [value, title] of [['ftps', 'FTPS (explicit TLS)'], ['sftp', 'SFTP (SSH)'], ['ftp', 'FTP (unencrypted — trusted networks only)']]) {
       protocol.append(element('option', { value }, title));
     }
@@ -75,18 +77,22 @@
     root.append(database);
     const wordpress = document.querySelector(side === 'source' ? '#source-wordpress' : '#destination-addresses');
     const panels = [transfer, database, wordpress];
+    if (side === 'destination') panels.push(document.querySelector('#destination-wordpress'));
     const tabs = element('div', { role: 'tablist', 'aria-label': `${side} connection details`, class: 'connection-tabs' });
     const buttons = [];
     function selectTab(index, focus = false) {
+      const allowed = contentMode() ? [side === 'source' ? 2 : 3] : [0, 1, 2];
+      if (!allowed.includes(index)) index = allowed[0];
       panels.forEach((panel, position) => {
         panel.hidden = position !== index;
+        buttons[position].hidden = !allowed.includes(position);
         buttons[position].setAttribute('aria-selected', String(position === index));
         buttons[position].tabIndex = position === index ? 0 : -1;
       });
       if (focus) buttons[index].focus();
     }
     panels.forEach((panel, index) => {
-      const title = ['(S)FTP', 'Database', side === 'source' ? 'WordPress' : 'WordPress URLs'][index];
+      const title = ['(S)FTP', 'Database', side === 'source' ? 'WordPress' : 'WordPress URLs', 'WordPress'][index];
       const tab = element('button', {
         type: 'button', role: 'tab', id: `${side}-tab-${index}`,
         'aria-controls': `${side}-panel-${index}`
@@ -101,11 +107,12 @@
         const keys = ['ArrowLeft', 'ArrowRight', 'Home', 'End'];
         if (!keys.includes(event.key) || busy || running) return;
         event.preventDefault();
-        const next = event.key === 'Home' ? 0 : event.key === 'End' ? panels.length - 1
-          : (index + (event.key === 'ArrowRight' ? 1 : -1) + panels.length) % panels.length;
+        const available = buttons.map((button, position) => button.hidden ? -1 : position).filter(position => position !== -1);
+        const next = event.key === 'Home' ? available[0] : event.key === 'End' ? available.at(-1)
+          : available[(available.indexOf(index) + (event.key === 'ArrowRight' ? 1 : -1) + available.length) % available.length];
         selectTab(next, true);
       });
-      if (index < panels.length - 1) {
+      if (index < 2) {
         const next = element('button', { type: 'button', class: 'secondary' }, `Next: ${index === 0 ? 'Database' : 'WordPress'}`);
         next.addEventListener('click', () => {
           if (busy || running) return;
@@ -118,12 +125,13 @@
       root.append(panel);
     });
     root.prepend(tabs);
-    connectionTabs[side] = { panels, selectTab };
+    connectionTabs[side] = { panels, selectTab, refresh: () => selectTab(panels.findIndex(panel => !panel.hidden)) };
     selectTab(0);
     configurationControls(side, root);
   }
 
   function updateNavigation() {
+    document.querySelector('#migration-mode').disabled = step !== 0 || busy || running || Boolean(checkpoint);
     document.querySelectorAll('[data-go-step]').forEach(button => {
       button.disabled = busy || running || Number(button.dataset.goStep) > furthestStep;
     });
@@ -189,22 +197,27 @@
           const selected = file.files[0];
           if (!selected || selected.size > 131072) throw new Error('Choose an encrypted configuration file no larger than 128 KiB.');
           const settings = await window.ConfigPackage.decrypt(await selected.text(), side, passphrase.value);
+          if (contentMode() ? !settings.wordpress : !settings.transfer || !settings.database) {
+            throw new Error('This package does not contain connections for the selected migration mode. Change the mode before importing.');
+          }
           for (const input of form.querySelectorAll(`[name^="${side}."]`)) {
             const [, group, key] = input.name.split('.');
-            input.value = settings[group][key];
+            input.value = settings[group]?.[key] ?? '';
           }
           if (side === 'source') {
             inspected = null;
+            resumeConfig = null;
             contentTypes([]);
             furthestStep = 0;
           } else {
-            form.elements.namedItem('migration.homeUrl').value = settings.addresses.homeUrl;
-            form.elements.namedItem('migration.siteUrl').value = settings.addresses.siteUrl;
-            document.querySelector('#different-url').checked = settings.addresses.homeUrl !== settings.addresses.siteUrl;
+            form.elements.namedItem('migration.homeUrl').value = settings.addresses?.homeUrl ?? '';
+            form.elements.namedItem('migration.siteUrl').value = settings.addresses?.siteUrl ?? '';
+            document.querySelector('#different-url').checked = Boolean(settings.addresses &&
+              settings.addresses.homeUrl !== settings.addresses.siteUrl);
             form.elements.namedItem('migration.confirmOverwrite').checked = false;
           }
           const fingerprint = form.elements.namedItem(`${side}.transfer.fingerprint`);
-          const sftp = settings.transfer.protocol === 'sftp';
+          const sftp = form.elements.namedItem(`${side}.transfer.protocol`).value === 'sftp';
           fingerprint.parentElement.hidden = !sftp;
           fingerprint.required = sftp;
           updateOptional();
@@ -213,7 +226,7 @@
         } else {
           const settings = config();
           const selected = settings[side];
-          if (side === 'destination') selected.addresses = {
+          if (side === 'destination' && !contentMode()) selected.addresses = {
             homeUrl: settings.migration.homeUrl, siteUrl: settings.migration.siteUrl
           };
           const encrypted = await window.ConfigPackage.encrypt(side, selected, passphrase.value);
@@ -241,10 +254,35 @@
   }
 
   function updateOptional() {
-    const content = document.querySelector('#include-content').checked;
+    const only = contentMode();
+    sections.forEach((section, index) => {
+      section.querySelectorAll('input, select').forEach(input => { input.disabled = index !== step; });
+    });
+    document.querySelectorAll('.full-only').forEach(node => {
+      node.hidden = only;
+      if (only) node.querySelectorAll('input, select').forEach(input => { input.disabled = true; });
+    });
+    document.querySelectorAll('.content-only').forEach(node => {
+      node.hidden = !only;
+      if (!only) node.querySelectorAll('input, select').forEach(input => { input.disabled = true; });
+    });
+    for (const [side, tabs] of Object.entries(connectionTabs)) {
+      tabs.refresh();
+      tabs.panels.forEach((panel, index) => {
+        const used = only ? index === (side === 'source' ? 2 : 3) : index < 3;
+        if (!used) panel.querySelectorAll('input, select').forEach(input => { input.disabled = true; });
+      });
+    }
+    document.querySelector('#source-url-label').textContent = only ? 'Public WordPress home URL' : 'Current WordPress address';
+    const newer = only && document.querySelector('#newer-only').checked;
+    document.querySelector('#newer-options').hidden = !newer;
+    const since = form.elements.namedItem('migration.since');
+    since.disabled = step !== 1 || !newer;
+    since.required = newer;
+    const content = only || document.querySelector('#include-content').checked;
     document.querySelector('#content-options').hidden = !content;
     document.querySelectorAll('[name="post-type"]').forEach(input => { input.disabled = step !== 1 || !content; });
-    const replace = form.querySelector('[name="admin-mode"]:checked').value === 'replace';
+    const replace = !only && form.querySelector('[name="admin-mode"]:checked').value === 'replace';
     document.querySelector('#admin-options').hidden = !replace;
     form.querySelectorAll('#admin-options input').forEach(input => {
       input.required = replace;
@@ -254,7 +292,8 @@
     document.querySelector('#site-url-options').hidden = !different;
     const site = form.elements.namedItem('migration.siteUrl');
     site.required = different;
-    site.disabled = step !== 2 || !different;
+    site.disabled = step !== 2 || !different || only;
+    updateNavigation();
   }
 
   function config() {
@@ -269,6 +308,19 @@
     result.migration.postTypes = [...form.querySelectorAll('[name="post-type"]:checked')].map(input => input.value);
     result.migration.admin.mode = form.querySelector('[name="admin-mode"]:checked').value;
     if (!document.querySelector('#different-url').checked) result.migration.siteUrl = result.migration.homeUrl;
+    if (contentMode()) {
+      for (const side of ['source', 'destination']) result[side] = { wordpress: result[side].wordpress };
+      result.migration.includeContent = true;
+      result.migration.admin = { mode: 'keep' };
+      result.migration.homeUrl = result.destination.wordpress.url;
+      result.migration.siteUrl = result.destination.wordpress.url;
+      const since = result.migration.since;
+      result.migration.since = since ? `${since.length === 16 ? `${since}:00` : since}Z` : '';
+    } else {
+      delete result.destination.wordpress;
+      delete result.migration.newerOnly;
+      delete result.migration.since;
+    }
     return result;
   }
 
@@ -299,8 +351,8 @@
   function save() {
     const settings = config();
     for (const side of ['source', 'destination']) {
-      delete settings[side].transfer.password;
-      delete settings[side].database.password;
+      if (settings[side].transfer) delete settings[side].transfer.password;
+      if (settings[side].database) delete settings[side].database.password;
       if (settings[side].wordpress) delete settings[side].wordpress.password;
     }
     delete settings.migration.admin.password;
@@ -423,13 +475,17 @@
         const settings = config();
         if (checkpoint && resumeConfig) {
           // A checkpoint is tied to the original migration; passwords may be refreshed.
-          const stable = value => JSON.stringify(value);
+          const stable = value => JSON.stringify(value, (key, item) => {
+            if (!item || typeof item !== 'object' || Array.isArray(item)) return item;
+            return Object.fromEntries(Object.keys(item).sort().map(name => [name, item[name]]));
+          });
           const original = JSON.parse(JSON.stringify(resumeConfig));
           const current = JSON.parse(JSON.stringify(settings));
           for (const value of [original, current]) {
+            value.migration.mode ??= 'full';
             for (const side of ['source', 'destination']) {
-              delete value[side].transfer.password;
-              delete value[side].database.password;
+              if (value[side].transfer) delete value[side].transfer.password;
+              if (value[side].database) delete value[side].database.password;
               if (value[side].wordpress) delete value[side].wordpress.password;
             }
             delete value.migration.admin.password;
@@ -455,6 +511,29 @@
   });
 
   form.addEventListener('change', updateOptional);
+  form.addEventListener('change', event => {
+    if (busy || running) return;
+    if ((event.target.name || '').startsWith('source.') && !checkpoint) {
+      inspected = null;
+      resumeConfig = null;
+      furthestStep = 0;
+    } else if (step === 1) {
+      furthestStep = Math.min(furthestStep, 1);
+    }
+    updateNavigation();
+  });
+  document.querySelector('#migration-mode').addEventListener('change', () => {
+    if (checkpoint || busy || running) {
+      document.querySelector('#migration-mode').value = resumeConfig?.migration.mode || 'full';
+      showError('Keep the original migration mode while resuming a checkpoint.');
+    } else {
+      inspected = null;
+      contentTypes([]);
+      furthestStep = 0;
+    }
+    updateOptional();
+    updateNavigation();
+  });
   document.querySelectorAll('[data-go-step]').forEach(button => button.addEventListener('click', () => {
     const next = Number(button.dataset.goStep);
     if (!busy && !running && next <= furthestStep) setStep(next);
@@ -501,7 +580,7 @@
       const value = input.name.split('.').reduce((result, part) => result?.[part], saved.config);
       if (value === undefined) continue;
       if (input.type === 'checkbox') input.checked = Boolean(value);
-      else input.value = value;
+      else input.value = input.name === 'migration.since' ? value.replace(/Z$/, '') : value;
     }
     form.querySelector(`[name="admin-mode"][value="${saved.config.migration.admin.mode === 'replace' ? 'replace' : 'keep'}"]`).checked = true;
     for (const side of ['source', 'destination']) {
@@ -514,6 +593,7 @@
     checkpoint = saved.checkpoint;
     inspected = saved.inspected;
     contentTypes(inspected?.contentTypes, saved.config.migration.postTypes);
+    document.querySelector('#migration-mode').value = saved.config.migration.mode || 'full';
     document.querySelector('#resume-notice').hidden = true;
     setStep(0);
     log('Saved checkpoint restored. Reconnect using the original settings.');
@@ -530,9 +610,11 @@
         ? 'Server setup required: configure a private access key in config.php or MIGRATOR_ACCESS_KEY before connecting.'
         : 'Ready. Use HTTPS and enter your private access key to connect.';
       const missing = [];
-      if (data.capabilities?.mysql === false) missing.push('PDO MySQL');
       if (data.capabilities?.wordpressRest === false) missing.push('cURL');
       if (missing.length) showError(`This server needs these PHP extensions enabled: ${missing.join(', ')}.`);
+      if (data.capabilities?.mysql === false) {
+        document.querySelector('#startup').textContent += ' Full-site migration needs PDO MySQL; content-only mode does not.';
+      }
       try {
         saved = JSON.parse(localStorage.getItem(storageKey));
         if (saved?.version === 1 && saved.config) document.querySelector('#resume-notice').hidden = false;

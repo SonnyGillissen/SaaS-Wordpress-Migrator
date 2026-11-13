@@ -8,6 +8,7 @@ require_once __DIR__ . '/lib/serialization.php';
 require_once __DIR__ . '/lib/database.php';
 require_once __DIR__ . '/lib/wordpress.php';
 require_once __DIR__ . '/lib/migration.php';
+require_once __DIR__ . '/lib/content.php';
 
 ini_set('display_errors', '0');
 ini_set('log_errors', '0');
@@ -109,6 +110,9 @@ try {
         api_reply(['ok' => false, 'error' => 'Unknown action.'], 400);
     }
     $raw = $request['config'] ?? null;
+    if (is_array($raw) && is_array($raw['migration'] ?? null) && ($raw['migration']['mode'] ?? null) === 'content') {
+        api_reply(content_dispatch($action, $raw, $request['state'] ?? null));
+    }
     if ($action === 'inspect' && is_array($raw)) {
         // Inspection requires only the source connection form.
         $raw['destination'] = $raw['source'] ?? [];
