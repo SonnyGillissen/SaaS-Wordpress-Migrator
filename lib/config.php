@@ -114,6 +114,9 @@ function migration_config(mixed $raw): array
         'homeUrl' => migration_url(required_string($migration, 'homeUrl', 2048)),
         'confirmOverwrite' => ($migration['confirmOverwrite'] ?? false) === true,
     ];
+    if (($migration['acknowledgeSeparateRoots'] ?? false) === true) {
+        $out['migration']['acknowledgeSeparateRoots'] = true;
+    }
     if (!is_array($out['migration']['postTypes']) || count($out['migration']['postTypes']) > 100) {
         throw new RuntimeException('Choose at most 100 content types.');
     }
@@ -179,7 +182,11 @@ function migration_assert_distinct(array $config): void
         $sourceNamespace = [$a['protocol'] === 'sftp' ? 'sftp' : 'ftp', $a['port'], $a['username']];
         $destinationNamespace = [$b['protocol'] === 'sftp' ? 'sftp' : 'ftp', $b['port'], $b['username']];
         if ($sourceNamespace !== $destinationNamespace) {
-            throw new RuntimeException('Source and destination share a host but use different accounts, ports, or FTP/SFTP namespaces. Physical root separation cannot be proven; use separate hosts or the same account and service with disjoint directories.');
+            if (($config['migration']['acknowledgeSeparateRoots'] ?? false) !== true) {
+                throw new RuntimeException('Source and destination share a host but use different accounts, ports, or FTP/SFTP namespaces. Physical root separation cannot be proven. Verify their physical roots and explicitly acknowledge separate roots under Destination advanced settings, or use separate hosts.');
+            }
+            // Paths from different accounts/services may be relative to different chroots.
+            return;
         }
         $source = rtrim($a['path'], '/') . '/';
         $destination = rtrim(migration_home_root($config), '/') . '/';

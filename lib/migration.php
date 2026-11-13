@@ -13,6 +13,9 @@ function migration_warnings(array $config): array
         'Apache rewrite files are generated; Nginx/IIS routing must be configured by the server operator.',
         'Database triggers, events, stored routines and custom PHP configuration code are not copied. Failed migrations may leave the destination in maintenance mode.',
     ];
+    if (($config['migration']['acknowledgeSeparateRoots'] ?? false) === true) {
+        $warnings[] = 'Shared-host root separation is operator-acknowledged, not verified across accounts/services. Incorrect physical roots can overwrite the source; keep independent backups.';
+    }
     foreach (['source', 'destination'] as $side) {
         $protocol = $config[$side]['transfer']['protocol'];
         if ($protocol === 'ftp') {

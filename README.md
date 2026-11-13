@@ -53,10 +53,24 @@ on HTTPS (localhost is allowed for development).
   permissions to create, drop, insert, and update tables.
 
 Source and destination databases must be distinct. On a shared file-server host,
-both connections must use the same account, port, and service namespace, with
-disjoint directories. Ambiguous cross-account/chroot or FTP-to-SFTP combinations
-are rejected conservatively because their physical paths cannot be proven
-separate. Use distinct hosts rather than bypassing these source-safety checks.
+the default is the same account, port, and service namespace, with disjoint
+directories. Ambiguous cross-account/chroot or FTP-to-SFTP combinations are
+rejected because their physical paths cannot be proven separate.
+
+If you have independently verified the physical roots with your host, open
+**Destination → Advanced: shared-host root acknowledgment** and check the explicit
+acknowledgment to allow different accounts, ports, or service namespaces on the
+same host. Verify both the WordPress destination directory and its public home
+root: neither may contain or alias the source. Different displayed paths alone
+are not proof. A mistaken acknowledgment can overwrite source files; take
+independent backups first.
+
+This opt-in bypasses **only** ambiguous file-server namespace separation.
+Confirmed overlapping roots within the same account/service, path/symlink safety,
+and same-database checks are never bypassed. It is off by default, cleared after
+connection-package imports or edits to transfer/root settings, and never included
+in exported configuration packages. Browser checkpoints retain the choice so a
+paused job can resume with its original settings. Content-only mode does not use it.
 
 Unsupported capabilities must be enabled by the hosting provider; the wizard
 cannot bypass hosting firewalls, missing extensions, or filesystem permissions.

@@ -200,6 +200,7 @@
           if (contentMode() ? !settings.wordpress : !settings.transfer || !settings.database) {
             throw new Error('This package does not contain connections for the selected migration mode. Change the mode before importing.');
           }
+          form.elements.namedItem('migration.acknowledgeSeparateRoots').checked = false;
           for (const input of form.querySelectorAll(`[name^="${side}."]`)) {
             const [, group, key] = input.name.split('.');
             input.value = settings[group]?.[key] ?? '';
@@ -309,6 +310,7 @@
     result.migration.admin.mode = form.querySelector('[name="admin-mode"]:checked').value;
     if (!document.querySelector('#different-url').checked) result.migration.siteUrl = result.migration.homeUrl;
     if (contentMode()) {
+      delete result.migration.acknowledgeSeparateRoots;
       for (const side of ['source', 'destination']) result[side] = { wordpress: result[side].wordpress };
       result.migration.includeContent = true;
       result.migration.admin = { mode: 'keep' };
@@ -317,6 +319,7 @@
       const since = result.migration.since;
       result.migration.since = since ? `${since.length === 16 ? `${since}:00` : since}Z` : '';
     } else {
+      if (!result.migration.acknowledgeSeparateRoots) delete result.migration.acknowledgeSeparateRoots;
       delete result.destination.wordpress;
       delete result.migration.newerOnly;
       delete result.migration.since;
@@ -513,6 +516,11 @@
   form.addEventListener('change', updateOptional);
   form.addEventListener('change', event => {
     if (busy || running) return;
+    if (/^(source|destination)\.transfer\./.test(event.target.name || '') ||
+        ['migration.homeUrl', 'migration.siteUrl'].includes(event.target.name) ||
+        event.target.id === 'different-url') {
+      form.elements.namedItem('migration.acknowledgeSeparateRoots').checked = false;
+    }
     if ((event.target.name || '').startsWith('source.') && !checkpoint) {
       inspected = null;
       resumeConfig = null;

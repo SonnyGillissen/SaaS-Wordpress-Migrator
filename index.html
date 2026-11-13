@@ -120,6 +120,12 @@
           <p class="content-only" hidden>Matching content may be updated. Existing unrelated content is retained. Keep both sites unchanged while running or resuming; plugins may trigger notifications or other side effects on import.</p>
           <label class="choice"><input name="migration.confirmOverwrite" type="checkbox" required> I have a backup and permission to overwrite the destination.</label>
         </aside>
+        <details class="full-only configuration-package">
+          <summary>Advanced: shared-host root acknowledgment</summary>
+          <p class="hint">Different accounts or services can show different paths for the same physical files. Enable only after verifying with your host that the source root and destination home root are physically separate and neither contains the other. Incorrect acknowledgment can overwrite your source. Keep independent backups.</p>
+          <label class="choice"><input name="migration.acknowledgeSeparateRoots" type="checkbox"> I have verified the physical roots are separate; allow different accounts, ports, or FTP/SFTP namespaces on the same host.</label>
+          <p class="hint">This overrides only an ambiguous namespace check. Confirmed overlap within the same account/service and same-database checks remain enforced.</p>
+        </details>
         <div class="actions">
           <button type="button" class="secondary" data-back>Back</button>
           <button type="submit">Validate and start migration</button>
